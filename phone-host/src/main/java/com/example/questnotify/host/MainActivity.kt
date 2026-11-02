@@ -161,8 +161,19 @@ class MainActivity : ComponentActivity() {
         val testId = Random.nextInt(2000, 8999)
         val sampleMessages = listOf(
             "Alex: Hey! Are you in VR right now? Let's hop into Walkabout Mini Golf!",
-            "Calendar: Team Sync starts in 10 minutes",
-            "Delivery: Your package has arrived at the front door."
+            "Calendar: Product Design Review starts in 10 minutes",
+            "Uber Eats: Your driver Michael is approaching with your dinner order!",
+            "Doorbell: Motion detected at the Front Porch camera",
+            "WhatsApp - Sarah: Can you send me the Wi-Fi password when you get a chance?",
+            "Discord - Quest Community: Beat Saber tournament bracket is live in #announcements",
+            "Bank Alert: Direct deposit of $2,450.00 has posted to your checking account",
+            "Flight Tracker: Flight UA 482 to San Francisco is boarding at Gate B14",
+            "Lyft: Your driver arrives in 3 minutes (Silver Toyota Camry)",
+            "Smart Home: Living room thermostat set to 71°F Eco Mode",
+            "Mom: Calling you! Pick up whenever you're free :)",
+            "Steam: A game on your wishlist is now 50% off",
+            "Slack - Lead Dev: Pull request #42 was approved and merged to main!",
+            "Package Tracker: Delivered: Package placed inside your mailbox"
         )
         val picked = sampleMessages.random()
         val title = picked.substringBefore(":")
