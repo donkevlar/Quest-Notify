@@ -613,19 +613,19 @@ fun PhoneHostScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Local Webview Dashboard",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 17.sp,
+                                color = Color.White
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = "Local Webview Dashboard",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 17.sp,
-                                    color = Color.White
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
                                 Box(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(4.dp))
                                         .background(if (isWebViewEnabled) Color(0xFF1B3326) else Color(0xFF263238))
-                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                        .padding(horizontal = 7.dp, vertical = 2.dp)
                                 ) {
                                     Text(
                                         text = if (isWebViewEnabled) "ACTIVE" else "DISABLED",
@@ -634,13 +634,13 @@ fun PhoneHostScreen(
                                         color = if (isWebViewEnabled) Color(0xFF81C784) else Color(0xFF90A4AE)
                                     )
                                 }
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = if (isWebViewEnabled) "Broadcasting on LAN" else "Disabled by default",
+                                    fontSize = 12.sp,
+                                    color = if (isWebViewEnabled) Color(0xFF81C784) else Color(0xFF90A4AE)
+                                )
                             }
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = "Secure local web portal to view and action notifications from any browser",
-                                fontSize = 12.sp,
-                                color = Color(0xFF90A4AE)
-                            )
                         }
 
                         Switch(
@@ -648,6 +648,13 @@ fun PhoneHostScreen(
                             onCheckedChange = { HostBridgeRepository.setWebViewEnabled(it) }
                         )
                     }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Secure local web portal to view and action notifications from any browser or headset",
+                        fontSize = 12.sp,
+                        color = Color(0xFF90A4AE)
+                    )
 
                     if (isWebViewEnabled) {
                         Spacer(modifier = Modifier.height(12.dp))

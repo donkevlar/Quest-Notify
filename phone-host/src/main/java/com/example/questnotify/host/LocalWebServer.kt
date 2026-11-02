@@ -862,3 +862,4 @@ object WebDashboardHtml {
 </html>
     """.trimIndent()
 }
+
