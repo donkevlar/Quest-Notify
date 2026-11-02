@@ -19,65 +19,103 @@ import java.net.Socket
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.security.SecureRandom
-import javax.crypto.Cipher
-import javax.crypto.spec.GCMParameterSpec
-import javax.crypto.spec.SecretKeySpec
 
 data class EncryptedBundle(
     val salt: String,
     val iv: String,
-    val ciphertext: String
+    val ciphertext: String,
+    val tag: String
 ) {
     fun toJsonObject(): JSONObject = JSONObject().apply {
         put("salt", salt)
         put("iv", iv)
         put("ciphertext", ciphertext)
+        put("tag", tag)
     }
 
     companion object {
         fun fromJsonObject(obj: JSONObject): EncryptedBundle = EncryptedBundle(
             salt = obj.optString("salt", ""),
             iv = obj.optString("iv", ""),
-            ciphertext = obj.optString("ciphertext", "")
+            ciphertext = obj.optString("ciphertext", ""),
+            tag = obj.optString("tag", "")
         )
     }
 }
 
+/**
+ * Universal CTR stream cipher with SHA-256 MAC authentication.
+ * 100% portable across Java and pure JavaScript without requiring
+ * secure context (HTTPS) or window.crypto.subtle in local network browsers.
+ */
 object WebCryptoHelper {
     fun encrypt(plaintext: String, pin: String): EncryptedBundle {
         val salt = ByteArray(16).also { SecureRandom().nextBytes(it) }
-        val iv = ByteArray(12).also { SecureRandom().nextBytes(it) }
+        val iv = ByteArray(8).also { SecureRandom().nextBytes(it) }
 
         val md = MessageDigest.getInstance("SHA-256")
-        md.update(salt)
-        val keyBytes = md.digest(pin.trim().toByteArray(StandardCharsets.UTF_8))
-        val key = SecretKeySpec(keyBytes, "AES")
+        val key = md.digest(salt + pin.trim().toByteArray(StandardCharsets.UTF_8))
 
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.ENCRYPT_MODE, key, GCMParameterSpec(128, iv))
-        val ciphertextWithTag = cipher.doFinal(plaintext.toByteArray(StandardCharsets.UTF_8))
+        val ptBytes = plaintext.toByteArray(StandardCharsets.UTF_8)
+        val ctBytes = cryptCtr(ptBytes, key, iv)
+
+        val mdTag = MessageDigest.getInstance("SHA-256")
+        mdTag.update(key)
+        val tagBytes = mdTag.digest(ctBytes)
 
         return EncryptedBundle(
             salt = bytesToHex(salt),
             iv = bytesToHex(iv),
-            ciphertext = bytesToHex(ciphertextWithTag)
+            ciphertext = bytesToHex(ctBytes),
+            tag = bytesToHex(tagBytes)
         )
     }
 
     fun decrypt(bundle: EncryptedBundle, pin: String): String {
         val salt = hexToBytes(bundle.salt)
         val iv = hexToBytes(bundle.iv)
-        val ciphertextWithTag = hexToBytes(bundle.ciphertext)
+        val ctBytes = hexToBytes(bundle.ciphertext)
 
         val md = MessageDigest.getInstance("SHA-256")
-        md.update(salt)
-        val keyBytes = md.digest(pin.trim().toByteArray(StandardCharsets.UTF_8))
-        val key = SecretKeySpec(keyBytes, "AES")
+        val key = md.digest(salt + pin.trim().toByteArray(StandardCharsets.UTF_8))
 
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(128, iv))
-        val plaintextBytes = cipher.doFinal(ciphertextWithTag)
-        return String(plaintextBytes, StandardCharsets.UTF_8)
+        val mdTag = MessageDigest.getInstance("SHA-256")
+        mdTag.update(key)
+        val expectedTag = bytesToHex(mdTag.digest(ctBytes))
+
+        if (expectedTag != bundle.tag) {
+            throw SecurityException("Authentication tag mismatch or invalid PIN")
+        }
+
+        val ptBytes = cryptCtr(ctBytes, key, iv)
+        return String(ptBytes, StandardCharsets.UTF_8)
+    }
+
+    private fun cryptCtr(data: ByteArray, key: ByteArray, iv: ByteArray): ByteArray {
+        val out = ByteArray(data.size)
+        var blockIndex = 0
+        var offset = 0
+        val md = MessageDigest.getInstance("SHA-256")
+        while (offset < data.size) {
+            val counterBytes = byteArrayOf(
+                ((blockIndex ushr 24) and 0xFF).toByte(),
+                ((blockIndex ushr 16) and 0xFF).toByte(),
+                ((blockIndex ushr 8) and 0xFF).toByte(),
+                (blockIndex and 0xFF).toByte()
+            )
+            md.reset()
+            md.update(key)
+            md.update(iv)
+            val blockHash = md.digest(counterBytes)
+            var i = 0
+            while (i < 32 && offset < data.size) {
+                out[offset] = (data[offset].toInt() xor blockHash[i].toInt()).toByte()
+                i++
+                offset++
+            }
+            blockIndex++
+        }
+        return out
     }
 
     private fun bytesToHex(bytes: ByteArray): String {
@@ -389,9 +427,10 @@ object WebDashboardHtml {
     .btn-primary {
       background: var(--primary);
       color: #0A0E17;
-      padding: 10px 20px;
+      padding: 10px 24px;
       font-weight: 700;
-      font-size: 14px;
+      font-size: 15px;
+      border-radius: 8px;
     }
     .btn-primary:hover {
       filter: brightness(1.1);
@@ -416,7 +455,7 @@ object WebDashboardHtml {
       margin: 0 auto;
       padding: 20px;
     }
-    /* PIN Modal */
+    /* PIN Screen */
     #pin-screen {
       display: flex;
       flex-direction: column;
@@ -430,7 +469,7 @@ object WebDashboardHtml {
       border: 1px solid var(--border);
       border-radius: 16px;
       padding: 32px 24px;
-      max-width: 400px;
+      max-width: 420px;
       width: 100%;
       box-shadow: 0 12px 32px rgba(0,0,0,0.5);
     }
@@ -454,13 +493,13 @@ object WebDashboardHtml {
       border: 2px solid var(--border);
       border-radius: 10px;
       color: var(--primary);
-      font-size: 28px;
+      font-size: 32px;
       font-weight: 800;
       letter-spacing: 12px;
       text-align: center;
-      width: 180px;
+      width: 200px;
       padding: 10px 0;
-      margin: 0 auto 20px auto;
+      margin: 0 auto 16px auto;
       display: block;
     }
     .pin-input:focus {
@@ -470,8 +509,8 @@ object WebDashboardHtml {
     .pin-error {
       color: var(--danger);
       font-size: 13px;
-      font-weight: 500;
-      margin-top: 12px;
+      font-weight: 600;
+      margin-top: 14px;
       display: none;
     }
     /* Notification Feed */
@@ -589,7 +628,7 @@ object WebDashboardHtml {
       <div>
         <div class="brand-title">Quest Notify Webview</div>
       </div>
-      <div class="badge-secure">🔒 AES-GCM Encrypted</div>
+      <div class="badge-secure">🔒 PIN-Encrypted</div>
     </div>
     <div class="header-actions" id="header-actions" style="display: none;">
       <button class="btn-secondary" onclick="fetchNotifications()">↻ Refresh</button>
@@ -605,14 +644,14 @@ object WebDashboardHtml {
         <div class="pin-shield">🔐</div>
         <h2 class="pin-title">Enter 4-Digit Security PIN</h2>
         <p class="pin-desc">
-          Notifications are protected with hardware-accelerated AES-GCM encryption.
-          Enter the PIN displayed in Quest Notify Host on your phone to decrypt and manage alerts.
+          Notifications are encrypted with your 4-digit PIN using SHA-256 CTR encryption.
+          Enter the PIN displayed on your phone's Quest Notify Host screen to decrypt and view alerts.
         </p>
         <input type="password" id="pin-input" class="pin-input" maxlength="4" placeholder="••••" autofocus inputmode="numeric">
         <div>
           <button class="btn-primary" onclick="submitPin()">Unlock Dashboard</button>
         </div>
-        <div class="pin-error" id="pin-error">Incorrect PIN or decryption failed.</div>
+        <div class="pin-error" id="pin-error">Incorrect PIN. Decryption failed.</div>
       </div>
     </div>
 
@@ -631,59 +670,151 @@ object WebDashboardHtml {
     let activePin = sessionStorage.getItem("qnotify_pin") || "";
     let pollInterval = null;
 
-    function hexToBytes(hex) {
-      const bytes = new Uint8Array(hex.length / 2);
-      for (let i = 0; i < bytes.length; i++) {
-        bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
+    // Pure JS SHA-256 implementation - runs everywhere without requiring window.crypto.subtle
+    function sha256Bytes(bytes) {
+      function rightRotate(value, amount) { return (value >>> amount) | (value << (32 - amount)); }
+      const mathPow = Math.pow;
+      const maxWord = mathPow(2, 32);
+      let i, j;
+      const words = [];
+      const bitLength = bytes.length * 8;
+      let hash = [];
+      const k = [];
+      let primeCounter = 0;
+      const isComposite = {};
+      for (let candidate = 2; primeCounter < 64; candidate++) {
+        if (!isComposite[candidate]) {
+          for (i = 0; i < 313; i += candidate) isComposite[i] = candidate;
+          hash[primeCounter] = (mathPow(candidate, .5) * maxWord) | 0;
+          k[primeCounter++] = (mathPow(candidate, 1/3) * maxWord) | 0;
+        }
       }
-      return bytes;
+      hash = hash.slice(0, 8);
+      for (i = 0; i < bytes.length; i++) {
+        words[i >> 2] |= (bytes[i] & 0xff) << (24 - ((i % 4) * 8));
+      }
+      words[bitLength >> 5] |= 0x80 << (24 - (bitLength % 32));
+      words[(((bitLength + 64) >> 9) << 4) + 15] = bitLength;
+      for (j = 0; j < words.length; j += 16) {
+        const w = words.slice(j, j + 16);
+        const oldHash = hash.slice(0);
+        for (i = 0; i < 64; i++) {
+          const w15 = w[i - 15], w2 = w[i - 2];
+          const s0 = rightRotate(w15, 7) ^ rightRotate(w15, 18) ^ (w15 >>> 3);
+          const s1 = rightRotate(w2, 17) ^ rightRotate(w2, 19) ^ (w2 >>> 10);
+          w[i] = (i < 16) ? (w[i] || 0) : ((w[i - 16] + s0 + w[i - 7] + s1) | 0);
+          const s1_maj = rightRotate(hash[0], 2) ^ rightRotate(hash[0], 13) ^ rightRotate(hash[0], 22);
+          const maj = (hash[0] & hash[1]) ^ (hash[0] & hash[2]) ^ (hash[1] & hash[2]);
+          const t2 = (s1_maj + maj) | 0;
+          const s0_ch = rightRotate(hash[4], 6) ^ rightRotate(hash[4], 11) ^ rightRotate(hash[4], 25);
+          const ch = (hash[4] & hash[5]) ^ (~hash[4] & hash[6]);
+          const t1 = (hash[7] + s0_ch + ch + k[i] + w[i]) | 0;
+          hash = [(t1 + t2) | 0].concat(hash);
+          hash[4] = (hash[4] + t1) | 0;
+          hash.pop();
+        }
+        for (i = 0; i < 8; i++) hash[i] = (hash[i] + oldHash[i]) | 0;
+      }
+      const out = new Uint8Array(32);
+      for (i = 0; i < 8; i++) {
+        out[i * 4] = (hash[i] >> 24) & 0xff;
+        out[i * 4 + 1] = (hash[i] >> 16) & 0xff;
+        out[i * 4 + 2] = (hash[i] >> 8) & 0xff;
+        out[i * 4 + 3] = hash[i] & 0xff;
+      }
+      return out;
     }
 
-    function bytesToHex(bytes) {
-      return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+    function strToBytes(str) {
+      const enc = [];
+      for (let i = 0; i < str.length; i++) {
+        let code = str.charCodeAt(i);
+        if (code < 128) enc.push(code);
+        else if (code < 2048) { enc.push(192 | (code >> 6), 128 | (code & 63)); }
+        else { enc.push(224 | (code >> 12), 128 | ((code >> 6) & 63), 128 | (code & 63)); }
+      }
+      return new Uint8Array(enc);
     }
 
-    async function deriveAesKey(saltBytes, pin) {
-      const enc = new TextEncoder();
-      const pinBytes = enc.encode(pin.trim());
-      const combined = new Uint8Array(saltBytes.length + pinBytes.length);
-      combined.set(saltBytes);
-      combined.set(pinBytes, saltBytes.length);
-      const hash = await crypto.subtle.digest('SHA-256', combined);
-      return await crypto.subtle.importKey('raw', hash, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+    function bytesToStr(bytes) {
+      let str = '';
+      let i = 0;
+      while (i < bytes.length) {
+        let b = bytes[i++];
+        if (b < 128) str += String.fromCharCode(b);
+        else if (b < 224) { str += String.fromCharCode(((b & 31) << 6) | (bytes[i++] & 63)); }
+        else { str += String.fromCharCode(((b & 15) << 12) | ((bytes[i++] & 63) << 6) | (bytes[i++] & 63)); }
+      }
+      return str;
     }
 
-    async function decryptPayload(bundle, pin) {
+    function hexToBytes(hex) {
+      const b = new Uint8Array(hex.length / 2);
+      for (let i = 0; i < hex.length; i += 2) b[i / 2] = parseInt(hex.substr(i, 2), 16);
+      return b;
+    }
+
+    function bytesToHex(b) {
+      return Array.from(b).map(x => x.toString(16).padStart(2, '0')).join('');
+    }
+
+    function concatBytes(a, b) {
+      const c = new Uint8Array(a.length + b.length);
+      c.set(a, 0); c.set(b, a.length);
+      return c;
+    }
+
+    function cryptCtr(dataBytes, keyBytes, ivBytes) {
+      const out = new Uint8Array(dataBytes.length);
+      let blockIndex = 0;
+      let offset = 0;
+      while (offset < dataBytes.length) {
+        const counterBytes = new Uint8Array([
+          (blockIndex >> 24) & 0xff, (blockIndex >> 16) & 0xff,
+          (blockIndex >> 8) & 0xff, blockIndex & 0xff
+        ]);
+        const blockHash = sha256Bytes(concatBytes(concatBytes(keyBytes, ivBytes), counterBytes));
+        for (let i = 0; i < 32 && offset < dataBytes.length; i++, offset++) {
+          out[offset] = dataBytes[offset] ^ blockHash[i];
+        }
+        blockIndex++;
+      }
+      return out;
+    }
+
+    function decryptPayload(bundle, pin) {
       const salt = hexToBytes(bundle.salt);
       const iv = hexToBytes(bundle.iv);
-      const ct = hexToBytes(bundle.ciphertext);
-      const key = await deriveAesKey(salt, pin);
-      const decryptedBuffer = await crypto.subtle.decrypt(
-        { name: 'AES-GCM', iv: iv, tagLength: 128 },
-        key,
-        ct
-      );
-      const dec = new TextDecoder();
-      return JSON.parse(dec.decode(decryptedBuffer));
+      const ctBytes = hexToBytes(bundle.ciphertext);
+      const key = sha256Bytes(concatBytes(salt, strToBytes(pin.trim())));
+
+      const expectedTag = bytesToHex(sha256Bytes(concatBytes(key, ctBytes)));
+      if (expectedTag !== bundle.tag) {
+        throw new Error("Authentication tag mismatch: Invalid PIN");
+      }
+
+      const ptBytes = cryptCtr(ctBytes, key, iv);
+      const jsonStr = bytesToStr(ptBytes);
+      return JSON.parse(jsonStr);
     }
 
-    async function encryptPayload(dataObj, pin) {
-      const enc = new TextEncoder();
-      const plaintext = enc.encode(JSON.stringify(dataObj));
+    function encryptPayload(dataObj, pin) {
       const salt = new Uint8Array(16);
-      crypto.getRandomValues(salt);
-      const iv = new Uint8Array(12);
-      crypto.getRandomValues(iv);
-      const key = await deriveAesKey(salt, pin);
-      const ciphertextBuffer = await crypto.subtle.encrypt(
-        { name: 'AES-GCM', iv: iv, tagLength: 128 },
-        key,
-        plaintext
-      );
+      for (let i = 0; i < 16; i++) salt[i] = Math.floor(Math.random() * 256);
+      const iv = new Uint8Array(8);
+      for (let i = 0; i < 8; i++) iv[i] = Math.floor(Math.random() * 256);
+
+      const key = sha256Bytes(concatBytes(salt, strToBytes(pin.trim())));
+      const jsonStr = JSON.stringify(dataObj);
+      const ptBytes = strToBytes(jsonStr);
+      const ctBytes = cryptCtr(ptBytes, key, iv);
+      const tag = bytesToHex(sha256Bytes(concatBytes(key, ctBytes)));
+
       return {
         salt: bytesToHex(salt),
         iv: bytesToHex(iv),
-        ciphertext: bytesToHex(new Uint8Array(ciphertextBuffer))
+        ciphertext: bytesToHex(ctBytes),
+        tag: tag
       };
     }
 
@@ -700,9 +831,9 @@ object WebDashboardHtml {
 
       try {
         const resp = await fetch("/api/notifications");
-        if (!resp.ok) throw new Error("Server error " + resp.status);
+        if (!resp.ok) throw new Error("Server error HTTP " + resp.status);
         const encryptedBundle = await resp.json();
-        const decryptedList = await decryptPayload(encryptedBundle, pin);
+        const decryptedList = decryptPayload(encryptedBundle, pin);
 
         // Success! Save PIN
         activePin = pin;
@@ -710,7 +841,9 @@ object WebDashboardHtml {
         showDashboard();
         renderNotifications(decryptedList);
       } catch (err) {
-        errorDiv.textContent = "Incorrect PIN. Decryption failed.";
+        console.error("PIN Decryption error:", err);
+        sessionStorage.removeItem("qnotify_pin");
+        errorDiv.textContent = "Incorrect PIN. Decryption failed. Please check the PIN on your phone.";
         errorDiv.style.display = "block";
       }
     }
@@ -739,11 +872,10 @@ object WebDashboardHtml {
         const resp = await fetch("/api/notifications");
         if (!resp.ok) return;
         const encryptedBundle = await resp.json();
-        const list = await decryptPayload(encryptedBundle, activePin);
+        const list = decryptPayload(encryptedBundle, activePin);
         renderNotifications(list);
       } catch (err) {
-        // PIN might have expired or changed
-        console.warn("Decryption failed:", err);
+        console.warn("Polling decryption failed:", err);
       }
     }
 
@@ -810,7 +942,7 @@ object WebDashboardHtml {
       if (cardEl) cardEl.classList.add("dismissing");
 
       try {
-        const payload = await encryptPayload({ action: "dismiss", key: key }, activePin);
+        const payload = encryptPayload({ action: "dismiss", key: key }, activePin);
         const resp = await fetch("/api/action", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -827,7 +959,7 @@ object WebDashboardHtml {
     async function clearAllNotifications() {
       if (!confirm("Clear all active notifications from the phone?")) return;
       try {
-        const payload = await encryptPayload({ action: "clear_all" }, activePin);
+        const payload = encryptPayload({ action: "clear_all" }, activePin);
         await fetch("/api/action", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -848,13 +980,16 @@ object WebDashboardHtml {
       return (str || "").replace(/\\/g, "\\\\").replace(/'/g, "\\'");
     }
 
-    // Auto-login if session pin exists
-    document.getElementById("pin-input").addEventListener("keydown", function(e) {
+    const pinInput = document.getElementById("pin-input");
+    pinInput.addEventListener("keydown", function(e) {
       if (e.key === "Enter") submitPin();
+    });
+    pinInput.addEventListener("input", function(e) {
+      if (this.value.length === 4) submitPin();
     });
 
     if (activePin && activePin.length === 4) {
-      document.getElementById("pin-input").value = activePin;
+      pinInput.value = activePin;
       submitPin();
     }
   </script>
@@ -862,4 +997,3 @@ object WebDashboardHtml {
 </html>
     """.trimIndent()
 }
-
