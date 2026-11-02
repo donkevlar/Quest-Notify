@@ -1,0 +1,14 @@
+*.iml
+.gradle
+/local.properties
+/.idea/
+.DS_Store
+/build
+/phone-host/build
+/quest-client/build
+/shared/build
+/captures
+.externalNativeBuild
+.cxx
+*.apk
+*.aab
