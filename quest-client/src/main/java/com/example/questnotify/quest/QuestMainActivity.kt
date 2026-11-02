@@ -14,6 +14,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -173,18 +175,19 @@ fun QuestDashboardScreen(
             .fillMaxSize()
             .padding(20.dp)
     ) {
-        val isWidePanel = maxWidth >= 680.dp
+        val isWidePanel = maxWidth >= 640.dp
 
         if (isWidePanel) {
             Row(
                 modifier = Modifier.fillMaxSize(),
-                horizontalArrangement = Arrangement.spacedBy(20.dp)
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 Column(
                     modifier = Modifier
-                        .weight(0.44f)
-                        .fillMaxHeight(),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                        .weight(0.46f)
+                        .fillMaxHeight()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     QuestControlColumn(
                         connectionState = connectionState,
@@ -200,11 +203,12 @@ fun QuestDashboardScreen(
                         onConnect = { onConnect(hostIpInput, pinInput) },
                         onDisconnect = onDisconnect
                     )
+                    Spacer(modifier = Modifier.height(24.dp))
                 }
 
                 Column(
                     modifier = Modifier
-                        .weight(0.56f)
+                        .weight(0.54f)
                         .fillMaxHeight()
                 ) {
                     QuestNotificationsFeed(
@@ -437,7 +441,7 @@ private fun QuestControlColumn(
                     fontSize = 15.sp,
                     color = Color.White
                 )
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -445,20 +449,28 @@ private fun QuestControlColumn(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Floating VR Heads-Up Toasts", color = Color.White, fontSize = 14.sp)
                         Text(
-                            "Shows native Horizon OS popup notifications even inside VR games",
+                            text = "Floating VR Heads-Up Toasts",
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Shows native Horizon OS popup notifications even inside VR games",
                             color = Color(0xFF90A4AE),
-                            fontSize = 11.sp
+                            fontSize = 11.sp,
+                            lineHeight = 15.sp
                         )
                     }
+                    Spacer(modifier = Modifier.width(12.dp))
                     Switch(
                         checked = showHeadsUpToasts,
                         onCheckedChange = { QuestClientRepository.setShowHeadsUpToasts(it) }
                     )
                 }
 
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -466,13 +478,21 @@ private fun QuestControlColumn(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Voice Readout (TTS)", color = Color.White, fontSize = 14.sp)
                         Text(
-                            "Reads incoming phone notifications aloud through Quest speakers",
+                            text = "Voice Readout (TTS)",
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Reads incoming phone notifications aloud through Quest speakers",
                             color = Color(0xFF90A4AE),
-                            fontSize = 11.sp
+                            fontSize = 11.sp,
+                            lineHeight = 15.sp
                         )
                     }
+                    Spacer(modifier = Modifier.width(12.dp))
                     Switch(
                         checked = speakNotifications,
                         onCheckedChange = { QuestClientRepository.setSpeakNotifications(it) }
