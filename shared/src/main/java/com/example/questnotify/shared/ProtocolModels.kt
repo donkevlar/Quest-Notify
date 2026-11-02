@@ -6,6 +6,7 @@ object ProtocolConstants {
     const val MAGIC_HEADER = "QNOTIFY_V1"
     const val UDP_DISCOVERY_PORT = 48210
     const val TCP_STREAM_PORT = 48211
+    const val HTTP_WEB_PORT = 48212
 }
 
 enum class PacketType {

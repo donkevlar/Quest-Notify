@@ -10,8 +10,11 @@ import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.os.Build
 import android.os.Bundle
+import android.net.Uri
 import android.provider.Settings
 import android.util.Base64
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.viewinterop.AndroidView
 import com.google.android.gms.ads.AdRequest
@@ -271,8 +274,18 @@ fun PhoneHostScreen(
     val knownPackages by HostBridgeRepository.knownPackages.collectAsState()
     val connectedClients by HostBridgeRepository.connectedClients.collectAsState()
     val forwardedHistory by HostBridgeRepository.forwardedHistory.collectAsState()
+    val isWebViewEnabled by HostBridgeRepository.isWebViewEnabled.collectAsState()
 
     var showAppFilterDialog by remember { mutableStateOf(false) }
+    var showInAppWebViewDialog by remember { mutableStateOf(false) }
+
+    if (showInAppWebViewDialog) {
+        val webUrl = "http://${localIp}:${ProtocolConstants.HTTP_WEB_PORT}"
+        InAppWebViewDialog(
+            url = webUrl,
+            onDismissRequest = { showInAppWebViewDialog = false }
+        )
+    }
 
     if (showAppFilterDialog) {
         AppFilterDialog(onDismissRequest = { showAppFilterDialog = false })
@@ -586,7 +599,139 @@ fun PhoneHostScreen(
             }
         }
 
-        // 4. Connected Quest 3 Devices Card
+        // 4. Local Webview Dashboard Card (Sliding Switch, disabled by default)
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "Local Webview Dashboard",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 17.sp,
+                                    color = Color.White
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(if (isWebViewEnabled) Color(0xFF1B3326) else Color(0xFF263238))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = if (isWebViewEnabled) "ACTIVE" else "DISABLED",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isWebViewEnabled) Color(0xFF81C784) else Color(0xFF90A4AE)
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "Secure local web portal to view and action notifications from any browser",
+                                fontSize = 12.sp,
+                                color = Color(0xFF90A4AE)
+                            )
+                        }
+
+                        Switch(
+                            checked = isWebViewEnabled,
+                            onCheckedChange = { HostBridgeRepository.setWebViewEnabled(it) }
+                        )
+                    }
+
+                    if (isWebViewEnabled) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        val webUrl = "http://${localIp}:${ProtocolConstants.HTTP_WEB_PORT}"
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFF101620))
+                                .padding(12.dp)
+                        ) {
+                            Column {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Web Portal URL:",
+                                        fontSize = 12.sp,
+                                        color = Color(0xFF90A4AE)
+                                    )
+                                    Text(
+                                        text = "🔒 PIN Encrypted",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF81C784)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = webUrl,
+                                    fontSize = 14.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF4FC3F7)
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "AES-GCM encryption is locked with your 4-digit PIN ($pairingPin). Enter this PIN in the browser to decrypt and action/dismiss alerts.",
+                                    fontSize = 11.sp,
+                                    color = Color(0xFF78909C)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(webUrl))
+                                    context.startActivity(intent)
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Open in Browser", fontSize = 12.sp)
+                            }
+
+                            Button(
+                                onClick = { showInAppWebViewDialog = true },
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E3A5F))
+                            ) {
+                                Text("Preview in App", fontSize = 12.sp, color = Color(0xFF4FC3F7))
+                            }
+                        }
+                    } else {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "Disabled by default. Toggle the switch above to host the local web dashboard.",
+                            fontSize = 12.sp,
+                            color = Color(0xFF78909C)
+                        )
+                    }
+                }
+            }
+        }
+
+        // 5. Connected Quest 3 Devices Card
         item {
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -1028,3 +1173,64 @@ fun AppFilterDialog(
     }
 }
 
+
+@Composable
+fun InAppWebViewDialog(
+    url: String,
+    onDismissRequest: () -> Unit
+) {
+    Dialog(
+        onDismissRequest = onDismissRequest,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            shape = RoundedCornerShape(16.dp),
+            color = Color(0xFF0F141C)
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFF1B2230))
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "Local Webview Dashboard",
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            fontSize = 16.sp
+                        )
+                        Text(
+                            text = url,
+                            fontSize = 12.sp,
+                            color = Color(0xFF90A4AE)
+                        )
+                    }
+                    TextButton(onClick = onDismissRequest) {
+                        Text("Close", color = Color(0xFF4FC3F7), fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                AndroidView(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    factory = { ctx ->
+                        WebView(ctx).apply {
+                            settings.javaScriptEnabled = true
+                            settings.domStorageEnabled = true
+                            webViewClient = WebViewClient()
+                            loadUrl(url)
+                        }
+                    }
+                )
+            }
+        }
+    }
+}

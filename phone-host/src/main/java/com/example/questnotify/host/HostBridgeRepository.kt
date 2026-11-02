@@ -34,6 +34,7 @@ object HostBridgeRepository {
     private const val KEY_IGNORE_ONGOING = "ignore_ongoing"
     private const val KEY_PAIRING_PIN = "pairing_pin"
     private const val KEY_PIN_TIMESTAMP = "pin_timestamp"
+    private const val KEY_WEB_VIEW_ENABLED = "web_view_enabled"
     const val PIN_VALIDITY_DURATION_MS = 24 * 60 * 60 * 1000L // 24 hours
 
     private var prefs: SharedPreferences? = null
@@ -49,6 +50,9 @@ object HostBridgeRepository {
 
     private val _ignoreOngoing = MutableStateFlow(true)
     val ignoreOngoing: StateFlow<Boolean> = _ignoreOngoing.asStateFlow()
+
+    private val _isWebViewEnabled = MutableStateFlow(false)
+    val isWebViewEnabled: StateFlow<Boolean> = _isWebViewEnabled.asStateFlow()
 
     private val _filterMode = MutableStateFlow(AppFilterMode.ALL_APPS)
     val filterMode: StateFlow<AppFilterMode> = _filterMode.asStateFlow()
@@ -87,6 +91,7 @@ object HostBridgeRepository {
         _allowedPackages.value = sp.getStringSet(KEY_ALLOWED_PACKAGES, emptySet())?.toSet() ?: emptySet()
         _knownPackages.value = sp.getStringSet(KEY_KNOWN_PACKAGES, emptySet())?.toSet() ?: emptySet()
         _ignoreOngoing.value = sp.getBoolean(KEY_IGNORE_ONGOING, true)
+        _isWebViewEnabled.value = sp.getBoolean(KEY_WEB_VIEW_ENABLED, false)
 
         val savedPin = sp.getString(KEY_PAIRING_PIN, null)
         val pinTime = sp.getLong(KEY_PIN_TIMESTAMP, 0L)
@@ -107,6 +112,11 @@ object HostBridgeRepository {
     fun setFilterMode(mode: AppFilterMode) {
         _filterMode.value = mode
         prefs?.edit()?.putString(KEY_FILTER_MODE, mode.name)?.apply()
+    }
+
+    fun setWebViewEnabled(enabled: Boolean) {
+        _isWebViewEnabled.value = enabled
+        prefs?.edit()?.putBoolean(KEY_WEB_VIEW_ENABLED, enabled)?.apply()
     }
 
     fun isPackageAllowed(packageName: String): Boolean {

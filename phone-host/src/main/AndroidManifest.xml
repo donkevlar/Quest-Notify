@@ -21,6 +21,7 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:label="Quest Notify Host"
         android:supportsRtl="true"
+        android:usesCleartextTraffic="true"
         android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
 
         <!-- Google Mobile Ads (AdMob) App ID: using Google's official sample App ID for testing. -->

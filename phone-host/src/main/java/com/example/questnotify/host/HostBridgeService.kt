@@ -41,6 +41,7 @@ class HostBridgeService : Service() {
     private var serverSocket: ServerSocket? = null
     private var udpSocket: DatagramSocket? = null
     private var serverJob: Job? = null
+    private var localWebServer: LocalWebServer? = null
 
     private data class ActiveClient(
         val id: String,
@@ -87,6 +88,7 @@ class HostBridgeService : Service() {
             launch { runUdpDiscoveryResponder() }
             launch { runUdpBeaconBroadcaster() }
             launch { forwardOutboundNotifications() }
+            launch { monitorWebViewState() }
             runTcpServer()
         }
     }
@@ -298,6 +300,21 @@ class HostBridgeService : Service() {
         }
     }
 
+    private suspend fun monitorWebViewState() {
+        HostBridgeRepository.isWebViewEnabled.collect { enabled ->
+            if (enabled) {
+                if (localWebServer == null) {
+                    val server = LocalWebServer { key -> handleNotificationAck(key) }
+                    server.start(ProtocolConstants.HTTP_WEB_PORT)
+                    localWebServer = server
+                }
+            } else {
+                localWebServer?.stop()
+                localWebServer = null
+            }
+        }
+    }
+
     private fun stopBridgeServer() {
         serverJob?.cancel()
         try {
@@ -315,6 +332,8 @@ class HostBridgeService : Service() {
             }
         }
         activeClients.clear()
+        localWebServer?.stop()
+        localWebServer = null
         HostBridgeRepository.setServerRunning(false)
     }
 
