@@ -17,12 +17,51 @@ class PhoneNotificationListenerService : NotificationListenerService() {
 
     private val appIconCache = ConcurrentHashMap<String, String>()
 
+    companion object {
+        @Volatile
+        private var instance: PhoneNotificationListenerService? = null
+
+        fun dismissNotificationOnPhone(key: String): Boolean {
+            val service = instance ?: return false
+            return try {
+                service.cancelNotification(key)
+                true
+            } catch (_: Exception) {
+                false
+            }
+        }
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        instance = this
+        HostBridgeRepository.initPreferences(this)
+    }
+
+    override fun onListenerConnected() {
+        super.onListenerConnected()
+        instance = this
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        if (instance == this) instance = null
+    }
+
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         super.onNotificationPosted(sbn)
         if (sbn == null) return
 
         // Avoid echoing our own foreground server status notification
         if (sbn.packageName == packageName && sbn.id == HostBridgeService.FOREGROUND_NOTIFICATION_ID) {
+            return
+        }
+
+        // Record package as known in filter settings
+        HostBridgeRepository.recordPackageSeen(sbn.packageName)
+
+        // Check if package is allowed through
+        if (!HostBridgeRepository.isPackageAllowed(sbn.packageName)) {
             return
         }
 

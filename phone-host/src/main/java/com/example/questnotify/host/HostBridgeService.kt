@@ -232,9 +232,18 @@ class HostBridgeService : Service() {
             while (serviceScope.isActive && !socket.isClosed) {
                 val line = reader.readLine() ?: break
                 val msg = WireMessage.fromJsonLine(line) ?: continue
-                if (msg.type == PacketType.PING) {
-                    val pong = WireMessage(type = PacketType.PONG)
-                    sendLineSynchronized(writer, pong.toJsonLine())
+                when (msg.type) {
+                    PacketType.PING -> {
+                        val pong = WireMessage(type = PacketType.PONG)
+                        sendLineSynchronized(writer, pong.toJsonLine())
+                    }
+                    PacketType.NOTIFICATION_ACK -> {
+                        val key = msg.targetKey.ifEmpty { msg.removedKey }
+                        if (key.isNotEmpty()) {
+                            handleNotificationAck(key)
+                        }
+                    }
+                    else -> Unit
                 }
             }
         } catch (_: Exception) {
@@ -246,6 +255,19 @@ class HostBridgeService : Service() {
             } catch (_: Exception) {
             }
         }
+    }
+
+    private fun handleNotificationAck(key: String) {
+        val dismissed = PhoneNotificationListenerService.dismissNotificationOnPhone(key)
+        if (!dismissed || key.startsWith("test:")) {
+            val nm = getSystemService(NotificationManager::class.java)
+            val testId = key.removePrefix("test:").toIntOrNull()
+            if (testId != null) {
+                nm?.cancel(testId)
+            }
+            nm?.cancel(key.hashCode())
+        }
+        HostBridgeRepository.onPhoneNotificationRemoved(key)
     }
 
     private suspend fun forwardOutboundNotifications() {

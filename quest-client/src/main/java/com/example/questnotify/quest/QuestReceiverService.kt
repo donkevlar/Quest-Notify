@@ -45,6 +45,7 @@ class QuestReceiverService : Service(), TextToSpeech.OnInitListener {
     private var discoveryJob: Job? = null
     private var connectionJob: Job? = null
     private var activeSocket: Socket? = null
+    private var activeWriter: BufferedWriter? = null
     private var udpSocket: DatagramSocket? = null
     private var multicastLock: WifiManager.MulticastLock? = null
 
@@ -86,6 +87,14 @@ class QuestReceiverService : Service(), TextToSpeech.OnInitListener {
                 ensureForeground()
                 if (hostIp.isNotEmpty() && pin.isNotEmpty()) {
                     connectToPhoneHost(hostIp, pin)
+                }
+                return START_STICKY
+            }
+
+            ACTION_ACKNOWLEDGE_NOTIFICATION -> {
+                val key = intent.getStringExtra(EXTRA_NOTIFICATION_KEY).orEmpty()
+                if (key.isNotEmpty()) {
+                    acknowledgeNotificationOnPhone(key)
                 }
                 return START_STICKY
             }
@@ -241,6 +250,7 @@ class QuestReceiverService : Service(), TextToSpeech.OnInitListener {
                     }
 
                     if (handshakeMsg.type == PacketType.PAIR_ACK) {
+                        activeWriter = writer
                         val phoneName = handshakeMsg.deviceName.ifEmpty { hostIp }
                         QuestClientRepository.updateConnectionState(
                             QuestConnectionState.CONNECTED,
@@ -292,6 +302,7 @@ class QuestReceiverService : Service(), TextToSpeech.OnInitListener {
                         "Connection lost (${e.localizedMessage ?: "error"}). Retrying in 4s..."
                     )
                 } finally {
+                    activeWriter = null
                     try {
                         activeSocket?.close()
                     } catch (_: Exception) {
@@ -306,6 +317,9 @@ class QuestReceiverService : Service(), TextToSpeech.OnInitListener {
     }
 
     private fun handleIncomingNotification(payload: NotificationPayload) {
+        if (QuestClientRepository.mutedPackages.value.contains(payload.packageName)) {
+            return
+        }
         QuestClientRepository.onNotificationReceived(payload)
 
         if (QuestClientRepository.showHeadsUpToasts.value) {
@@ -324,6 +338,28 @@ class QuestReceiverService : Service(), TextToSpeech.OnInitListener {
         nm?.cancel(key.hashCode())
     }
 
+    private fun acknowledgeNotificationOnPhone(key: String) {
+        val nm = getSystemService(NotificationManager::class.java)
+        nm?.cancel(key.hashCode())
+        QuestClientRepository.onNotificationRemoved(key)
+
+        serviceScope.launch {
+            try {
+                val writer = activeWriter ?: return@launch
+                val ackMsg = WireMessage(
+                    type = PacketType.NOTIFICATION_ACK,
+                    targetKey = key
+                )
+                synchronized(writer) {
+                    writer.write(ackMsg.toJsonLine())
+                    writer.newLine()
+                    writer.flush()
+                }
+            } catch (_: Exception) {
+            }
+        }
+    }
+
     private fun postQuestHeadsUpNotification(payload: NotificationPayload) {
         val nm = getSystemService(NotificationManager::class.java) ?: return
         val openIntent = Intent(this, QuestMainActivity::class.java)
@@ -331,6 +367,17 @@ class QuestReceiverService : Service(), TextToSpeech.OnInitListener {
             this,
             payload.key.hashCode(),
             openIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
+        val ackIntent = Intent(this, QuestReceiverService::class.java).apply {
+            action = ACTION_ACKNOWLEDGE_NOTIFICATION
+            putExtra(EXTRA_NOTIFICATION_KEY, payload.key)
+        }
+        val pendingAck = PendingIntent.getService(
+            this,
+            payload.key.hashCode() + 1000,
+            ackIntent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
@@ -345,6 +392,11 @@ class QuestReceiverService : Service(), TextToSpeech.OnInitListener {
             .setDefaults(NotificationCompat.DEFAULT_ALL)
             .setAutoCancel(true)
             .setContentIntent(pendingOpen)
+            .addAction(
+                android.R.drawable.checkbox_on_background,
+                "Mark as Read",
+                pendingAck
+            )
 
         if (payload.iconBase64.isNotBlank()) {
             try {
@@ -446,8 +498,18 @@ class QuestReceiverService : Service(), TextToSpeech.OnInitListener {
         const val ACTION_CONNECT = "com.example.questnotify.quest.ACTION_CONNECT"
         const val ACTION_DISCONNECT = "com.example.questnotify.quest.ACTION_DISCONNECT"
         const val ACTION_SCAN_LAN = "com.example.questnotify.quest.ACTION_SCAN_LAN"
+        const val ACTION_ACKNOWLEDGE_NOTIFICATION = "com.example.questnotify.quest.ACTION_ACKNOWLEDGE_NOTIFICATION"
         const val EXTRA_HOST_IP = "extra_host_ip"
         const val EXTRA_PAIRING_PIN = "extra_pairing_pin"
+        const val EXTRA_NOTIFICATION_KEY = "extra_notification_key"
+
+        fun acknowledgeNotification(context: Context, key: String) {
+            val intent = Intent(context, QuestReceiverService::class.java).apply {
+                action = ACTION_ACKNOWLEDGE_NOTIFICATION
+                putExtra(EXTRA_NOTIFICATION_KEY, key)
+            }
+            context.startService(intent)
+        }
     }
 }
 

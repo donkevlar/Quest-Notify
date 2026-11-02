@@ -17,11 +17,13 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -38,6 +40,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -45,6 +48,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -61,6 +65,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -69,6 +75,8 @@ import androidx.lifecycle.LifecycleEventObserver
 import com.example.questnotify.shared.NetworkUtils
 import com.example.questnotify.shared.NotificationPayload
 import com.example.questnotify.shared.ProtocolConstants
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -94,6 +102,7 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        HostBridgeRepository.initPreferences(this)
         HostBridgeRepository.updateLocalIp(NetworkUtils.getLocalIpv4Address())
 
         setContent {
@@ -237,8 +246,18 @@ fun PhoneHostScreen(
     val localIp by HostBridgeRepository.localIp.collectAsState()
     val pairingPin by HostBridgeRepository.pairingPin.collectAsState()
     val ignoreOngoing by HostBridgeRepository.ignoreOngoing.collectAsState()
+    val filterMode by HostBridgeRepository.filterMode.collectAsState()
+    val blockedPackages by HostBridgeRepository.blockedPackages.collectAsState()
+    val allowedPackages by HostBridgeRepository.allowedPackages.collectAsState()
+    val knownPackages by HostBridgeRepository.knownPackages.collectAsState()
     val connectedClients by HostBridgeRepository.connectedClients.collectAsState()
     val forwardedHistory by HostBridgeRepository.forwardedHistory.collectAsState()
+
+    var showAppFilterDialog by remember { mutableStateOf(false) }
+
+    if (showAppFilterDialog) {
+        AppFilterDialog(onDismissRequest = { showAppFilterDialog = false })
+    }
 
     val timeFormat = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
 
@@ -444,7 +463,102 @@ fun PhoneHostScreen(
             }
         }
 
-        // 3. Connected Quest 3 Devices Card
+        // 3. App Notification Filters Card
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "App Notification Filter",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 17.sp,
+                                color = Color.White
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            val filterSummary = when (filterMode) {
+                                AppFilterMode.ALL_APPS -> {
+                                    if (blockedPackages.isEmpty()) "Forwarding from all apps"
+                                    else "All apps allowed (${blockedPackages.size} blocked)"
+                                }
+                                AppFilterMode.SELECTED_APPS_ONLY -> {
+                                    if (allowedPackages.isEmpty()) "No apps selected (blocking all)"
+                                    else "Forwarding from ${allowedPackages.size} selected app(s)"
+                                }
+                            }
+                            Text(
+                                text = filterSummary,
+                                fontSize = 13.sp,
+                                color = if (filterMode == AppFilterMode.SELECTED_APPS_ONLY && allowedPackages.isEmpty()) Color(0xFFEF5350) else Color(0xFF81C784)
+                            )
+                        }
+
+                        Button(
+                            onClick = { showAppFilterDialog = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF263248))
+                        ) {
+                            Text("Manage Apps", color = Color(0xFF4FC3F7), fontSize = 13.sp)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Mode selector row
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFF101620))
+                            .padding(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (filterMode == AppFilterMode.ALL_APPS) Color(0xFF1E2D40) else Color.Transparent)
+                                .clickable { HostBridgeRepository.setFilterMode(AppFilterMode.ALL_APPS) }
+                                .padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "All Apps (Blocklist)",
+                                fontSize = 12.sp,
+                                fontWeight = if (filterMode == AppFilterMode.ALL_APPS) FontWeight.Bold else FontWeight.Normal,
+                                color = if (filterMode == AppFilterMode.ALL_APPS) Color(0xFF4FC3F7) else Color(0xFF90A4AE)
+                            )
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (filterMode == AppFilterMode.SELECTED_APPS_ONLY) Color(0xFF1E2D40) else Color.Transparent)
+                                .clickable { HostBridgeRepository.setFilterMode(AppFilterMode.SELECTED_APPS_ONLY) }
+                                .padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Selected Apps Only",
+                                fontSize = 12.sp,
+                                fontWeight = if (filterMode == AppFilterMode.SELECTED_APPS_ONLY) FontWeight.Bold else FontWeight.Normal,
+                                color = if (filterMode == AppFilterMode.SELECTED_APPS_ONLY) Color(0xFF4FC3F7) else Color(0xFF90A4AE)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // 4. Connected Quest 3 Devices Card
         item {
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -586,6 +700,268 @@ fun PhoneHostScreen(
                                 fontSize = 13.sp,
                                 color = Color(0xFFCFD8DC)
                             )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+data class AppInfoItem(
+    val packageName: String,
+    val appName: String
+)
+
+@Composable
+fun AppFilterDialog(
+    onDismissRequest: () -> Unit
+) {
+    val context = LocalContext.current
+    val filterMode by HostBridgeRepository.filterMode.collectAsState()
+    val blockedPackages by HostBridgeRepository.blockedPackages.collectAsState()
+    val allowedPackages by HostBridgeRepository.allowedPackages.collectAsState()
+    val knownPackages by HostBridgeRepository.knownPackages.collectAsState()
+
+    var searchQuery by remember { mutableStateOf("") }
+    var installedApps by remember { mutableStateOf<List<AppInfoItem>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+
+    LaunchedEffect(knownPackages) {
+        withContext(Dispatchers.IO) {
+            val pm = context.packageManager
+            val intent = Intent(Intent.ACTION_MAIN, null).apply {
+                addCategory(Intent.CATEGORY_LAUNCHER)
+            }
+            val launcherApps = try {
+                pm.queryIntentActivities(intent, 0)
+            } catch (_: Exception) {
+                emptyList()
+            }
+
+            val map = mutableMapOf<String, AppInfoItem>()
+            for (resolveInfo in launcherApps) {
+                val pkg = resolveInfo.activityInfo.packageName
+                if (pkg == context.packageName) continue
+                val label = resolveInfo.loadLabel(pm)?.toString() ?: pkg
+                map[pkg] = AppInfoItem(packageName = pkg, appName = label)
+            }
+
+            for (pkg in knownPackages) {
+                if (pkg == context.packageName) continue
+                if (!map.containsKey(pkg)) {
+                    val label = try {
+                        val ai = pm.getApplicationInfo(pkg, 0)
+                        pm.getApplicationLabel(ai).toString()
+                    } catch (_: Exception) {
+                        pkg.substringAfterLast('.').replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+                    }
+                    map[pkg] = AppInfoItem(packageName = pkg, appName = label)
+                }
+            }
+
+            val sorted = map.values.sortedBy { it.appName.lowercase() }
+            withContext(Dispatchers.Main) {
+                installedApps = sorted
+                isLoading = false
+            }
+        }
+    }
+
+    val filteredApps = remember(installedApps, searchQuery) {
+        if (searchQuery.isBlank()) installedApps
+        else installedApps.filter {
+            it.appName.contains(searchQuery, ignoreCase = true) ||
+            it.packageName.contains(searchQuery, ignoreCase = true)
+        }
+    }
+
+    Dialog(
+        onDismissRequest = onDismissRequest,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth(0.95f)
+                .fillMaxHeight(0.85f),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF141A24))
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(18.dp)
+            ) {
+                // Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Allowed App Notifications",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp,
+                            color = Color.White
+                        )
+                        Text(
+                            text = if (filterMode == AppFilterMode.ALL_APPS)
+                                "Uncheck apps to mute them on your Quest"
+                            else
+                                "Only checked apps will be forwarded to Quest",
+                            fontSize = 12.sp,
+                            color = Color(0xFF90A4AE)
+                        )
+                    }
+                    TextButton(onClick = onDismissRequest) {
+                        Text("Done", fontWeight = FontWeight.Bold, color = Color(0xFF4FC3F7), fontSize = 15.sp)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Search field
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text("Search apps...", color = Color(0xFF78909C), fontSize = 13.sp) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    shape = RoundedCornerShape(10.dp)
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Summary & Quick Action Buttons
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val allowedCount = installedApps.count { HostBridgeRepository.isPackageAllowed(it.packageName) }
+                    Text(
+                        text = "$allowedCount of ${installedApps.size} apps allowed",
+                        fontSize = 12.sp,
+                        color = Color(0xFF81C784),
+                        fontWeight = FontWeight.SemiBold
+                    )
+
+                    Row {
+                        TextButton(
+                            onClick = {
+                                val targets = filteredApps.map { it.packageName }
+                                HostBridgeRepository.setAllAppsAllowed(targets, true)
+                            }
+                        ) {
+                            Text("Allow All", fontSize = 12.sp, color = Color(0xFF4FC3F7))
+                        }
+                        TextButton(
+                            onClick = {
+                                val targets = filteredApps.map { it.packageName }
+                                HostBridgeRepository.setAllAppsAllowed(targets, false)
+                            }
+                        ) {
+                            Text("Block All", fontSize = 12.sp, color = Color(0xFFEF5350))
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                if (isLoading) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text("Loading apps...", color = Color(0xFF90A4AE))
+                    }
+                } else if (filteredApps.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text("No matching apps found", color = Color(0xFF90A4AE))
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        items(filteredApps, key = { it.packageName }) { app ->
+                            val isAllowed = HostBridgeRepository.isPackageAllowed(app.packageName)
+                            val iconBitmap = remember(app.packageName) {
+                                try {
+                                    val drawable = context.packageManager.getApplicationIcon(app.packageName)
+                                    val sizePx = 72
+                                    val bmp = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
+                                    val canvas = Canvas(bmp)
+                                    drawable.setBounds(0, 0, sizePx, sizePx)
+                                    drawable.draw(canvas)
+                                    bmp.asImageBitmap()
+                                } catch (_: Exception) {
+                                    null
+                                }
+                            }
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(Color(0xFF1B2332))
+                                    .clickable {
+                                        HostBridgeRepository.setAppAllowed(app.packageName, !isAllowed)
+                                    }
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    modifier = Modifier.weight(1f),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    if (iconBitmap != null) {
+                                        Image(
+                                            bitmap = iconBitmap,
+                                            contentDescription = app.appName,
+                                            modifier = Modifier
+                                                .size(34.dp)
+                                                .clip(RoundedCornerShape(6.dp))
+                                        )
+                                    } else {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(34.dp)
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(Color(0xFF37474F)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = app.appName.take(1).uppercase(),
+                                                color = Color.White,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column {
+                                        Text(
+                                            text = app.appName,
+                                            color = Color.White,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                        Text(
+                                            text = app.packageName,
+                                            color = Color(0xFF78909C),
+                                            fontSize = 11.sp
+                                        )
+                                    }
+                                }
+
+                                Switch(
+                                    checked = isAllowed,
+                                    onCheckedChange = { checked ->
+                                        HostBridgeRepository.setAppAllowed(app.packageName, checked)
+                                    }
+                                )
+                            }
                         }
                     }
                 }

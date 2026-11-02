@@ -35,6 +35,9 @@ object QuestClientRepository {
     private val _speakNotifications = MutableStateFlow(false)
     val speakNotifications: StateFlow<Boolean> = _speakNotifications.asStateFlow()
 
+    private val _mutedPackages = MutableStateFlow<Set<String>>(emptySet())
+    val mutedPackages: StateFlow<Set<String>> = _mutedPackages.asStateFlow()
+
     fun updateConnectionState(
         state: QuestConnectionState,
         message: String,
@@ -52,8 +55,18 @@ object QuestClientRepository {
     }
 
     fun onNotificationReceived(payload: NotificationPayload) {
+        if (_mutedPackages.value.contains(payload.packageName)) return
         val deduplicated = _notifications.value.filterNot { it.key == payload.key }
         _notifications.value = (listOf(payload) + deduplicated).take(100)
+    }
+
+    fun mutePackage(packageName: String) {
+        _mutedPackages.value = _mutedPackages.value + packageName
+        _notifications.value = _notifications.value.filterNot { it.packageName == packageName }
+    }
+
+    fun unmutePackage(packageName: String) {
+        _mutedPackages.value = _mutedPackages.value - packageName
     }
 
     fun onNotificationRemoved(key: String) {

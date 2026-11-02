@@ -56,6 +56,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -488,6 +489,7 @@ private fun QuestNotificationsFeed(
     onClearAll: () -> Unit,
     onDismissOne: (String) -> Unit
 ) {
+    val context = LocalContext.current
     val timeFormat = remember { SimpleDateFormat("h:mm:ss a", Locale.getDefault()) }
 
     Card(
@@ -603,8 +605,20 @@ private fun QuestNotificationsFeed(
                                                 fontSize = 12.sp
                                             )
                                         }
-                                        TextButton(onClick = { onDismissOne(item.key) }) {
-                                            Text("Dismiss", fontSize = 12.sp, color = Color(0xFF90A4AE))
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            TextButton(
+                                                onClick = {
+                                                    QuestReceiverService.acknowledgeNotification(context, item.key)
+                                                }
+                                            ) {
+                                                Text("Acknowledge", fontSize = 11.sp, color = Color(0xFF00E5FF), fontWeight = FontWeight.SemiBold)
+                                            }
+                                            TextButton(onClick = { QuestClientRepository.mutePackage(item.packageName) }) {
+                                                Text("Mute", fontSize = 11.sp, color = Color(0xFFEF9A9A))
+                                            }
+                                            TextButton(onClick = { onDismissOne(item.key) }) {
+                                                Text("Dismiss", fontSize = 11.sp, color = Color(0xFF90A4AE))
+                                            }
                                         }
                                     }
                                     Spacer(modifier = Modifier.height(4.dp))

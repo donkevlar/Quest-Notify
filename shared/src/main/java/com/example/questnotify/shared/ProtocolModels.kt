@@ -16,6 +16,7 @@ enum class PacketType {
     PAIR_REJECT,
     NOTIFICATION_POSTED,
     NOTIFICATION_REMOVED,
+    NOTIFICATION_ACK,
     PING,
     PONG
 }
@@ -104,6 +105,7 @@ data class WireMessage(
     val pairingPin: String = "",
     val notification: NotificationPayload? = null,
     val removedKey: String = "",
+    val targetKey: String = "",
     val reason: String = ""
 ) {
     fun toJsonLine(): String {
@@ -114,6 +116,7 @@ data class WireMessage(
         if (pairingPin.isNotEmpty()) obj.put("pairingPin", pairingPin)
         if (notification != null) obj.put("notification", notification.toJsonObject())
         if (removedKey.isNotEmpty()) obj.put("removedKey", removedKey)
+        if (targetKey.isNotEmpty()) obj.put("targetKey", targetKey)
         if (reason.isNotEmpty()) obj.put("reason", reason)
         return obj.toString()
     }
@@ -125,12 +128,14 @@ data class WireMessage(
                 if (obj.optString("magic") != ProtocolConstants.MAGIC_HEADER) return null
                 val type = PacketType.valueOf(obj.getString("type"))
                 val notifObj = obj.optJSONObject("notification")
+                val key = obj.optString("targetKey", obj.optString("removedKey", ""))
                 WireMessage(
                     type = type,
                     deviceName = obj.optString("deviceName", ""),
                     pairingPin = obj.optString("pairingPin", ""),
                     notification = notifObj?.let { NotificationPayload.fromJsonObject(it) },
                     removedKey = obj.optString("removedKey", ""),
+                    targetKey = key,
                     reason = obj.optString("reason", "")
                 )
             } catch (_: Exception) {
