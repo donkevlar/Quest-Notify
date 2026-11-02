@@ -90,12 +90,20 @@ class QuestMainActivity : ComponentActivity() {
             }
         }
 
-        val prefs = getSharedPreferences("quest_notify_prefs", Context.MODE_PRIVATE)
-        val savedIp = prefs.getString("last_host_ip", "").orEmpty()
-        val savedPin = prefs.getString("last_pin", "").orEmpty()
+        QuestClientRepository.initPreferences(this)
+        val savedPairing = QuestClientRepository.getValidSavedPairing()
+        val savedIp = savedPairing?.first.orEmpty()
+        val savedPin = savedPairing?.second.orEmpty()
 
         // Start UDP discovery listener immediately so phones on the LAN appear automatically
         triggerScanLan()
+
+        // Auto-connect if initial pairing is saved and within 24-hour validity
+        if (savedPairing != null && savedPairing.first.isNotBlank() &&
+            QuestClientRepository.connectionState.value == QuestConnectionState.DISCONNECTED
+        ) {
+            connectToHost(savedPairing.first, savedPairing.second)
+        }
 
         setContent {
             MaterialTheme(
@@ -115,13 +123,13 @@ class QuestMainActivity : ComponentActivity() {
                         initialPin = savedPin,
                         onScanLan = { triggerScanLan() },
                         onConnect = { ip, pin ->
-                            prefs.edit()
-                                .putString("last_host_ip", ip)
-                                .putString("last_pin", pin)
-                                .apply()
+                            QuestClientRepository.userExplicitlyDisconnected = false
                             connectToHost(ip, pin)
                         },
-                        onDisconnect = { disconnectFromHost() }
+                        onDisconnect = {
+                            QuestClientRepository.userExplicitlyDisconnected = true
+                            disconnectFromHost()
+                        }
                     )
                 }
             }
@@ -169,6 +177,11 @@ fun QuestDashboardScreen(
 
     var hostIpInput by remember { mutableStateOf(initialIp) }
     var pinInput by remember { mutableStateOf(initialPin) }
+
+    androidx.compose.runtime.LaunchedEffect(initialIp, initialPin) {
+        if (hostIpInput.isBlank() && initialIp.isNotBlank()) hostIpInput = initialIp
+        if (pinInput.isBlank() && initialPin.isNotBlank()) pinInput = initialPin
+    }
 
     BoxWithConstraints(
         modifier = Modifier

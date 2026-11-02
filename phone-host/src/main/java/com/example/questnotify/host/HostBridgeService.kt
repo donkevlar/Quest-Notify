@@ -202,11 +202,10 @@ class HostBridgeService : Service() {
                 return
             }
 
-            val expectedPin = HostBridgeRepository.pairingPin.value
-            if (request.pairingPin.trim() != expectedPin) {
+            if (!HostBridgeRepository.isPinValid(request.pairingPin)) {
                 val reject = WireMessage(
                     type = PacketType.PAIR_REJECT,
-                    reason = "Invalid pairing PIN. Check the 4-digit PIN on the phone host app."
+                    reason = "Invalid or expired pairing PIN (PINs expire after 24h). Check the phone host app."
                 )
                 sendLineSynchronized(writer, reject.toJsonLine())
                 socket.close()

@@ -419,7 +419,7 @@ fun PhoneHostScreen(
                         ) {
                             Column {
                                 Text(
-                                    text = "PAIRING PIN",
+                                    text = "PAIRING PIN (VALID FOR 24H)",
                                     fontSize = 11.sp,
                                     color = Color(0xFF90A4AE)
                                 )
@@ -429,6 +429,11 @@ fun PhoneHostScreen(
                                     fontFamily = FontFamily.Monospace,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = Color(0xFF4FC3F7)
+                                )
+                                Text(
+                                    text = "Auto-connects paired Quests",
+                                    fontSize = 11.sp,
+                                    color = Color(0xFF81C784)
                                 )
                             }
                             TextButton(onClick = { HostBridgeRepository.regeneratePin() }) {

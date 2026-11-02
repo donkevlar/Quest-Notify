@@ -54,6 +54,7 @@ class QuestReceiverService : Service(), TextToSpeech.OnInitListener {
 
     override fun onCreate() {
         super.onCreate()
+        QuestClientRepository.initPreferences(this)
         createNotificationChannels()
         tts = TextToSpeech(this, this)
         acquireMulticastLock()
@@ -70,6 +71,7 @@ class QuestReceiverService : Service(), TextToSpeech.OnInitListener {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_DISCONNECT -> {
+                QuestClientRepository.userExplicitlyDisconnected = true
                 disconnectFromHost(userInitiated = true)
                 stopSelf()
                 return START_NOT_STICKY
@@ -82,6 +84,7 @@ class QuestReceiverService : Service(), TextToSpeech.OnInitListener {
             }
 
             ACTION_CONNECT -> {
+                QuestClientRepository.userExplicitlyDisconnected = false
                 val hostIp = intent.getStringExtra(EXTRA_HOST_IP).orEmpty().trim()
                 val pin = intent.getStringExtra(EXTRA_PAIRING_PIN).orEmpty().trim()
                 ensureForeground()
@@ -102,6 +105,17 @@ class QuestReceiverService : Service(), TextToSpeech.OnInitListener {
 
         ensureForeground()
         sendDiscoveryProbe()
+
+        // Auto-connect if valid 24h pairing exists
+        if (!QuestClientRepository.userExplicitlyDisconnected &&
+            QuestClientRepository.connectionState.value == QuestConnectionState.DISCONNECTED &&
+            connectionJob?.isActive != true
+        ) {
+            val saved = QuestClientRepository.getValidSavedPairing()
+            if (saved != null && saved.first.isNotBlank()) {
+                connectToPhoneHost(saved.first, saved.second)
+            }
+        }
         return START_STICKY
     }
 
@@ -152,6 +166,17 @@ class QuestReceiverService : Service(), TextToSpeech.OnInitListener {
                         QuestClientRepository.onBeaconDiscovered(
                             beacon.copy(hostIp = resolvedIp)
                         )
+
+                        // Auto-connect if valid 24h pairing exists and not connected
+                        if (!QuestClientRepository.userExplicitlyDisconnected &&
+                            QuestClientRepository.connectionState.value == QuestConnectionState.DISCONNECTED &&
+                            connectionJob?.isActive != true
+                        ) {
+                            val saved = QuestClientRepository.getValidSavedPairing()
+                            if (saved != null && (saved.first.isEmpty() || saved.first == resolvedIp)) {
+                                connectToPhoneHost(resolvedIp, saved.second)
+                            }
+                        }
                     }
                 }
             } catch (_: Exception) {
@@ -240,9 +265,10 @@ class QuestReceiverService : Service(), TextToSpeech.OnInitListener {
                     }
 
                     if (handshakeMsg.type == PacketType.PAIR_REJECT) {
+                        QuestClientRepository.clearSavedPairing()
                         QuestClientRepository.updateConnectionState(
                             QuestConnectionState.ERROR,
-                            handshakeMsg.reason.ifEmpty { "Pairing rejected: Invalid PIN" }
+                            handshakeMsg.reason.ifEmpty { "Pairing rejected: Invalid or expired PIN" }
                         )
                         shouldReconnect = false
                         socket.close()
@@ -251,6 +277,7 @@ class QuestReceiverService : Service(), TextToSpeech.OnInitListener {
 
                     if (handshakeMsg.type == PacketType.PAIR_ACK) {
                         activeWriter = writer
+                        QuestClientRepository.savePairedHost(hostIp, pairingPin)
                         val phoneName = handshakeMsg.deviceName.ifEmpty { hostIp }
                         QuestClientRepository.updateConnectionState(
                             QuestConnectionState.CONNECTED,

@@ -32,6 +32,9 @@ object HostBridgeRepository {
     private const val KEY_ALLOWED_PACKAGES = "allowed_packages"
     private const val KEY_KNOWN_PACKAGES = "known_packages"
     private const val KEY_IGNORE_ONGOING = "ignore_ongoing"
+    private const val KEY_PAIRING_PIN = "pairing_pin"
+    private const val KEY_PIN_TIMESTAMP = "pin_timestamp"
+    const val PIN_VALIDITY_DURATION_MS = 24 * 60 * 60 * 1000L // 24 hours
 
     private var prefs: SharedPreferences? = null
 
@@ -84,6 +87,21 @@ object HostBridgeRepository {
         _allowedPackages.value = sp.getStringSet(KEY_ALLOWED_PACKAGES, emptySet())?.toSet() ?: emptySet()
         _knownPackages.value = sp.getStringSet(KEY_KNOWN_PACKAGES, emptySet())?.toSet() ?: emptySet()
         _ignoreOngoing.value = sp.getBoolean(KEY_IGNORE_ONGOING, true)
+
+        val savedPin = sp.getString(KEY_PAIRING_PIN, null)
+        val pinTime = sp.getLong(KEY_PIN_TIMESTAMP, 0L)
+        val now = System.currentTimeMillis()
+
+        if (savedPin != null && (now - pinTime) < PIN_VALIDITY_DURATION_MS) {
+            _pairingPin.value = savedPin
+        } else {
+            val newPin = generatePin()
+            _pairingPin.value = newPin
+            sp.edit()
+                .putString(KEY_PAIRING_PIN, newPin)
+                .putLong(KEY_PIN_TIMESTAMP, now)
+                .apply()
+        }
     }
 
     fun setFilterMode(mode: AppFilterMode) {
@@ -163,7 +181,28 @@ object HostBridgeRepository {
     fun regeneratePin(): String {
         val newPin = generatePin()
         _pairingPin.value = newPin
+        prefs?.edit()
+            ?.putString(KEY_PAIRING_PIN, newPin)
+            ?.putLong(KEY_PIN_TIMESTAMP, System.currentTimeMillis())
+            ?.apply()
         return newPin
+    }
+
+    fun getValidPairingPin(): String {
+        val sp = prefs
+        if (sp != null) {
+            val pinTime = sp.getLong(KEY_PIN_TIMESTAMP, 0L)
+            val now = System.currentTimeMillis()
+            if (now - pinTime >= PIN_VALIDITY_DURATION_MS) {
+                return regeneratePin()
+            }
+        }
+        return _pairingPin.value
+    }
+
+    fun isPinValid(pin: String): Boolean {
+        val current = getValidPairingPin()
+        return pin.trim() == current.trim()
     }
 
     fun setIgnoreOngoing(ignore: Boolean) {
