@@ -4,6 +4,10 @@
 [![Platform](https://img.shields.io/badge/Platform-Android%20%7C%20Meta%20Horizon%20OS-00E5FF?style=flat-square)](https://github.com/donkevlar/Quest-Notify)
 [![Language](https://img.shields.io/badge/Language-Kotlin%20%2F%20Jetpack%20Compose-7C4DFF?style=flat-square)](https://kotlinlang.org/)
 [![Devices](https://img.shields.io/badge/Supported%20Headsets-Quest%203%20%7C%20Quest%203S%20%7C%20Quest%20Pro-66BB6A?style=flat-square)](https://meta.com)
+[![AI Assisted](https://img.shields.io/badge/Developed%20with-AI%20Assistance-blueviolet?style=flat-square)](https://github.com/donkevlar/Quest-Notify)
+
+> [!NOTE]
+> **AI Disclosure**: This repository was developed with the assistance of Artificial Intelligence (AI pair-programming with Google DeepMind's Antigravity / Gemini models) in collaboration with [@donkevlar](https://github.com/donkevlar). Architecture, features, and code were collaboratively engineered, reviewed, and iteratively refined.
 
 **Quest Notify** streams your Android phone notifications over your local Wi-Fi network directly into your **Meta Quest 3** and **Meta Quest 3S**. Never take off your VR headset to check your phone again—notifications appear as native floating **Horizon OS heads-up VR toasts** inside games, in a spatial 2D dashboard panel, and via optional **Voice Readout (TTS)**.
 
