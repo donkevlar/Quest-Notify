@@ -13,6 +13,11 @@ import android.os.Bundle
 import android.provider.Settings
 import android.util.Base64
 import androidx.activity.ComponentActivity
+import androidx.compose.ui.viewinterop.AndroidView
+import com.google.android.gms.ads.AdRequest
+import com.google.android.gms.ads.AdSize
+import com.google.android.gms.ads.AdView
+import com.google.android.gms.ads.MobileAds
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -91,6 +96,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Initialize Google Mobile Ads SDK
+        MobileAds.initialize(this) {}
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(
@@ -272,12 +280,16 @@ fun PhoneHostScreen(
 
     val timeFormat = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
 
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        TopBannerAd(modifier = Modifier.fillMaxWidth())
+
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .weight(1f)
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
         item {
             Text(
                 text = "Quest Notify — Phone Host",
@@ -721,6 +733,36 @@ fun PhoneHostScreen(
                 }
             }
         }
+        }
+    }
+}
+
+/**
+ * Top Banner Ad powered by Google Mobile Ads (AdMob).
+ * Uses Google's official sample banner unit ID:
+ * ca-app-pub-3940256099942544/6300978111
+ * Replace with your production AdMob Banner Unit ID when publishing.
+ */
+@Composable
+fun TopBannerAd(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(Color(0xFF0F141C))
+            .padding(vertical = 4.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        AndroidView(
+            modifier = Modifier.fillMaxWidth(),
+            factory = { context ->
+                AdView(context).apply {
+                    setAdSize(AdSize.BANNER)
+                    // Official sample ad unit ID for testing banner ads
+                    adUnitId = "ca-app-pub-3940256099942544/6300978111"
+                    loadAd(AdRequest.Builder().build())
+                }
+            }
+        )
     }
 }
 
