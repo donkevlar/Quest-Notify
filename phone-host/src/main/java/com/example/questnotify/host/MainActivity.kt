@@ -93,6 +93,10 @@ import kotlin.random.Random
 
 class MainActivity : ComponentActivity() {
 
+    companion object {
+        const val ENABLE_ADS = false
+    }
+
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { }
@@ -100,8 +104,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Initialize Google Mobile Ads SDK
-        MobileAds.initialize(this) {}
+        // Initialize Google Mobile Ads SDK (disabled by default)
+        if (ENABLE_ADS) {
+            MobileAds.initialize(this) {}
+        }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(
@@ -294,7 +300,9 @@ fun PhoneHostScreen(
     val timeFormat = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        TopBannerAd(modifier = Modifier.fillMaxWidth())
+        if (MainActivity.ENABLE_ADS) {
+            TopBannerAd(modifier = Modifier.fillMaxWidth())
+        }
 
         LazyColumn(
             modifier = Modifier
@@ -897,6 +905,7 @@ fun PhoneHostScreen(
  */
 @Composable
 fun TopBannerAd(modifier: Modifier = Modifier) {
+    if (!MainActivity.ENABLE_ADS) return
     Box(
         modifier = modifier
             .fillMaxWidth()
